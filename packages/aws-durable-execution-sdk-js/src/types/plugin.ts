@@ -1,4 +1,21 @@
 import { Operation } from "@aws-sdk/client-lambda";
+import { DurableExecutionInvocationOutput } from "./core";
+
+/**
+ * Status enumeration for plugin invocation end hooks.
+ *
+ * This enum is separate from the core InvocationStatus and provides
+ * richer status information for plugin authors, including a RETRYING
+ * state that indicates the Lambda runtime will automatically retry.
+ *
+ * @experimental This enum is experimental and may be changed or removed in future releases.
+ */
+export enum PluginInvocationStatus {
+  SUCCEEDED = "SUCCEEDED",
+  FAILED = "FAILED",
+  PENDING = "PENDING",
+  RETRYING = "RETRYING",
+}
 
 /**
  * Information about a durable operation.
@@ -61,23 +78,33 @@ export interface AttemptEndInfo extends AttemptInfo {
 }
 
 /**
- * Information about a durable execution invocation.
+ * Base information identifying a durable execution invoke.
  *
  * @experimental This interface is experimental and may be changed or removed in future releases.
  */
-export interface InvocationInfo {
+export interface InvocationBaseInfo {
   requestId: string;
   executionArn: string;
+}
+
+/**
+ * Information about a durable execution invocation, including whether it is
+ * the first invocation (execution mode) or a subsequent replay.
+ *
+ * @experimental This interface is experimental and may be changed or removed in future releases.
+ */
+export interface InvocationInfo extends InvocationBaseInfo {
   isFirstInvocation: boolean;
 }
 
 /**
- * Information provided when a durable execution ends.
+ * Information provided when a durable execution invocation ends, including
+ * the invocation status and contextual details about the outcome.
  *
  * @experimental This interface is experimental and may be changed or removed in future releases.
  */
-export interface ExecutionEndInfo extends InvocationInfo {
-  status: "SUCCEEDED" | "FAILED";
+export interface InvocationEndInfo extends InvocationInfo {
+  status: PluginInvocationStatus;
   executionResult?: unknown;
   executionError?: Error;
   executionInput: unknown;
@@ -89,7 +116,7 @@ export interface ExecutionEndInfo extends InvocationInfo {
  *
  * @experimental This interface is experimental and may be changed or removed in future releases.
  */
-export interface OperationChangeInfo extends InvocationInfo {
+export interface OperationChangeInfo extends InvocationBaseInfo {
   updatedOperations: Record<string, Operation>;
   operations: Record<string, Operation>;
 }
@@ -100,10 +127,12 @@ export interface OperationChangeInfo extends InvocationInfo {
  * @experimental This interface is experimental and may be changed or removed in future releases.
  */
 export interface DurableInstrumentationPlugin {
-  onExecutionEnd?(info: ExecutionEndInfo): void;
   onInvocationStart?(info: InvocationInfo): void;
-  wrapInvocation?(info: InvocationInfo, fn: CustomerFn): CustomerFnResult;
-  onInvocationEnd?(info: InvocationInfo): void;
+  wrapInvocation?(
+    info: InvocationInfo,
+    fn: () => Promise<DurableExecutionInvocationOutput>,
+  ): Promise<DurableExecutionInvocationOutput>;
+  onInvocationEnd?(info: InvocationEndInfo): void;
   onOperationFirstStart?(info: OperationInfo): void;
   onOperationStart?(info: OperationInfo): void;
   wrapChildContextFn?(info: OperationInfo, fn: CustomerFn): CustomerFnResult;
